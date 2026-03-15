@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UN_DO Medical | Bluetooth Print</title>
+    <style>
+        body { font-family: 'Courier New', monospace; background: #f0f0f0; display: flex; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 450px; background: white; border: 3px solid #000; padding: 30px; box-shadow: 12px 12px 0px #00ff00; }
+        .page { display: none; }
+        .active { display: block; }
+        h1 { background: #000; color: #00ff00; text-align: center; padding: 15px; margin-top: 0; }
+        .question { margin-bottom: 20px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 12px; margin-top: 10px; border: 2px solid #000; box-sizing: border-box; }
+        button { width: 100%; padding: 20px; background: #000; color: #fff; border: none; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 20px; }
+        button:active { background: #00ff00; color: #000; }
+        #receipt-preview { border: 1px dashed #333; padding: 20px; background: #fff; margin: 20px 0; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>[ UN_DO ]</h1>
+
+    <div id="survey-page" class="page active">
+        <div class="question">
+            <p>환자의 성함을 입력하십시오.</p>
+            <input type="text" id="user-name" placeholder="NAME HERE">
+        </div>
+        <div class="question">
+            <p>하루 평균 스크롤 횟수가 500회 이상입니까?</p>
+            <label><input type="radio" name="q1" value="heavy"> 그렇다</label><br>
+            <label><input type="radio" name="q1" value="light"> 아니다</label>
+        </div>
+        <button onclick="generatePrescription()">분석 완료</button>
+    </div>
+
+    <div id="result-page" class="page">
+        <div id="receipt-preview">
+            <div style="text-align:center; font-weight:bold;">[ 처방전 프리뷰 ]</div>
+            <hr>
+            <p>환자명: <span id="res-name"></span></p>
+            <p>진단: <span id="res-diagnosis"></span></p>
+            <p>처방: <span id="res-item"></span></p>
+            <p style="text-align:right; font-weight:bold;">금액: <span id="res-price"></span> KRW</p>
+        </div>
+        <p style="font-size: 0.8rem; color: #666; text-align: center;">* 블루투스 프린터 전원이 켜져 있어야 합니다.</p>
+        <button onclick="connectAndPrint()">처방전 뽑기 (PRINT)</button>
+    </div>
+</div>
+
+<script>
+    let currentData = {};
+    let printDevice = null;
+
+    // 1. 설문 결과 생성
+    function generatePrescription() {
+        const name = document.getElementById('user-name').value;
+        const q1 = document.querySelector('input[name="q1"]:checked')?.value;
+
+        if(!name || !q1) { alert("모든 항목을 입력해주세요."); return; }
+
+        if(q1 === 'heavy') {
+            currentData = { name, diagnosis: "CRITICAL DOPAMINE ADDICTION", item: "DOPAMINE BLOCKER", price: "154,000" };
+        } else {
+            currentData = { name, diagnosis: "DIGITAL FATIGUE", item: "PIXEL CLEANER", price: "42,000" };
+        }
+
+        document.getElementById('res-name').innerText = currentData.name;
+        document.getElementById('res-diagnosis').innerText = currentData.diagnosis;
+        document.getElementById('res-item').innerText = currentData.item;
+        document.getElementById('res-price').innerText = currentData.price;
+
+        document.getElementById('survey-page').classList.remove('active');
+        document.getElementById('result-page').classList.add('active');
+    }
+
+    // 2. 블루투스 연결 및 인쇄 (핵심 로직)
+    async function connectAndPrint() {
+        try {
+            // 블루투스 기기 찾기 (프린터 서비스 UUID)
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ services: ['000018f0-0000-1000-8000-00805f9b34fb'] }],
+                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+            });
+
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+
+            // ESC/POS 명령어 (영문 기준 - 한글은 기종에 따라 설정 필요)
+            const encoder = new TextEncoder();
+            const init = '\x1b\x40'; // 초기화
+            const center = '\x1b\x61\x01'; // 중앙 정렬
+            const left = '\x1b\x61\x00'; // 왼쪽 정렬
+            const cut = '\x1d\x56\x00'; // 커팅
+
+            let recipe = `${init}${center}[ UN_DO MEDICAL ]\n\n${left}` +
+                         `PATIENT  : ${currentData.name}\n` +
+                         `DIAGNOSIS: ${currentData.diagnosis}\n` +
+                         `ITEM     : ${currentData.item}\n` +
+                         `--------------------------------\n` +
+                         `TOTAL COST: ${currentData.price} KRW\n\n` +
+                         `${center}RESET YOUR BRAIN\n\n\n${cut}`;
+
+            await characteristic.writeValue(encoder.encode(recipe));
+            
+            alert("인쇄가 시작됩니다!");
+            location.reload(); // 처음으로 리셋
+
+        } catch (error) {
+            console.error(error);
+            alert("블루투스 연결 실패: " + error.message);
+        }
+    }
+</script>
+
+</body>
+</html>
